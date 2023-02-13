@@ -26,30 +26,57 @@
 #include <opendnp3/master/PrintingCommandResultCallback.h>
 #include <opendnp3/master/PrintingSOEHandler.h>
 
+#include <CLI/CLI.hpp>
+
 using namespace std;
 using namespace opendnp3;
+
+std::string get_env_var(std::string const& key)
+{
+    char* val = std::getenv(key.c_str());
+    return (val == NULL) ? std::string() : std::string(val);
+}
 
 class TestSOEHandler : public ISOEHandler
 {
     virtual void BeginFragment(const ResponseInfo& info){};
     virtual void EndFragment(const ResponseInfo& info){};
 
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<Binary>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<DoubleBitBinary>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<Analog>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<Counter>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<FrozenCounter>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<BinaryOutputStatus>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<AnalogOutputStatus>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<OctetString>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<TimeAndInterval>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<BinaryCommandEvent>>& values) {};
-    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<AnalogCommandEvent>>& values) {};    
-    virtual void Process(const HeaderInfo& info, const ICollection<DNPTime>& values) {};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<Binary>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<DoubleBitBinary>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<Analog>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<Counter>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<FrozenCounter>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<BinaryOutputStatus>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<AnalogOutputStatus>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<OctetString>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<TimeAndInterval>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<BinaryCommandEvent>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<Indexed<AnalogCommandEvent>>& values){};
+    virtual void Process(const HeaderInfo& info, const ICollection<DNPTime>& values){};
 };
 
 int main(int argc, char* argv[])
 {
+    CLI::App app{"DNP3 Master"};
+    std::string host = "127.0.0.1";
+    app.add_option("host", host, "The hostname or IP address of the outstation");
+
+    auto envHost = get_env_var("HOST");
+    if (!envHost.empty())
+    {
+        host = envHost;
+    }
+
+    try
+    {
+        app.parse(argc, argv);
+    }
+    catch (const CLI::ParseError& e)
+    {
+        return app.exit(e);
+    }
+
     // Specify what log levels to use. NORMAL is warning and above
     // You can add all the comms logging by uncommenting below
     const auto logLevels = levels::NORMAL | levels::ALL_APP_COMMS;
@@ -58,7 +85,7 @@ int main(int argc, char* argv[])
     DNP3Manager manager(1, ConsoleLogger::Create());
 
     // Connect via a TCPClient socket to a outstation
-    auto channel = manager.AddTCPClient("tcpclient", logLevels, ChannelRetry::Default(), {IPEndpoint("127.0.0.1", 20000)},
+    auto channel = manager.AddTCPClient("tcpclient", logLevels, ChannelRetry::Default(), {IPEndpoint(host, 20000)},
                                         "0.0.0.0", PrintingChannelListener::Create());
 
     // The master config object for a master. The default are
@@ -90,7 +117,8 @@ int main(int argc, char* argv[])
     auto integrityScan = master->AddClassScan(ClassField::AllClasses(), TimeDuration::Minutes(1), test_soe_handler);
 
     // do a Class 1 exception poll every 5 seconds
-    auto exceptionScan = master->AddClassScan(ClassField(ClassField::CLASS_1), TimeDuration::Seconds(5), test_soe_handler);
+    auto exceptionScan
+        = master->AddClassScan(ClassField(ClassField::CLASS_1), TimeDuration::Seconds(5), test_soe_handler);
 
     // Enable the master. This will start communications.
     master->Enable();
@@ -122,8 +150,7 @@ int main(int argc, char* argv[])
             master->PerformFunction("disable unsol", FunctionCode::DISABLE_UNSOLICITED,
                                     {Header::AllObjects(60, 2), Header::AllObjects(60, 3), Header::AllObjects(60, 4)});
             break;
-        case ('r'):
-        {
+        case ('r'): {
             auto print = [](const RestartOperationResult& result) {
                 if (result.summary == TaskCompletion::SUCCESS)
                 {
@@ -146,22 +173,19 @@ int main(int argc, char* argv[])
         case ('e'):
             exceptionScan->Demand();
             break;
-        case ('c'):
-        {
+        case ('c'): {
             ControlRelayOutputBlock crob(OperationType::LATCH_ON);
             master->SelectAndOperate(crob, 0, PrintingCommandResultCallback::Get());
             break;
         }
-        case ('t'):
-        {
+        case ('t'): {
             channelCommsLoggingEnabled = !channelCommsLoggingEnabled;
             auto levels = channelCommsLoggingEnabled ? levels::ALL_COMMS : levels::NORMAL;
             channel->SetLogFilters(levels);
             std::cout << "Channel logging set to: " << levels.get_value() << std::endl;
             break;
         }
-        case ('u'):
-        {
+        case ('u'): {
             masterCommsLoggingEnabled = !masterCommsLoggingEnabled;
             auto levels = masterCommsLoggingEnabled ? levels::ALL_COMMS : levels::NORMAL;
             master->SetLogFilters(levels);

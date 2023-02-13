@@ -1,0 +1,18 @@
+FROM cblauvelt/cpp-builder-gcc10:latest AS build-env
+COPY . /app
+WORKDIR /app
+ENV TINI_VERSION v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-static tini
+RUN chmod +x tini
+RUN mkdir build && \
+    cd build && \
+    cmake --no-warn-unused-cli -DDNP3_STATIC_LIBS=ON -DDNP3_EXAMPLES=ON -DCMAKE_BUILD_TYPE:STRING=Release .. && \
+    make -j4
+
+FROM gcr.io/distroless/cc
+ENV HOST=host.docker.internal
+COPY --from=build-env /app/build/cpp/examples/master/dnp3-master /app/
+COPY --from=build-env /app/tini /app/
+WORKDIR /app
+ENTRYPOINT ["/app/tini", "--"]
+CMD ["/app/dnp3-master"]
